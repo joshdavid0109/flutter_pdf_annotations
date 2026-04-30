@@ -29,6 +29,10 @@ class PDFViewerActivity : AppCompatActivity() {
 
     private var pdfRenderer: PdfRenderer? = null
     private var pageCount = 0
+    // Density used when rendering display bitmaps — annotation paths/rects are
+    // stored in those bitmap coords, so we divide by this when writing to the
+    // saved PDF canvas (which is in raw PDF user-space points).
+    private var pageRenderDensity = 1f
     private lateinit var scrollView: LockableScrollView
     private lateinit var pdfContainer: LinearLayout
     private val drawingViews = mutableListOf<DrawingView>()
@@ -578,6 +582,7 @@ class PDFViewerActivity : AppCompatActivity() {
 
             // Render at display density for sharp output (capped to avoid excessive memory)
             val density = resources.displayMetrics.density.coerceAtMost(MAX_RENDER_DENSITY)
+            pageRenderDensity = density
             val renderWidth = (page.width * density).toInt()
             val renderHeight = (page.height * density).toInt()
 
@@ -654,6 +659,13 @@ class PDFViewerActivity : AppCompatActivity() {
                     documentPage.canvas.drawBitmap(bitmap, 0f, 0f, null)
                     bitmap.recycle()
 
+                    // Annotation coords are stored in display-bitmap space
+                    // (page.width * density). Scale the canvas down so they land
+                    // correctly in PDF user-space (page.width).
+                    val invDensity = if (pageRenderDensity > 0) 1f / pageRenderDensity else 1f
+                    documentPage.canvas.save()
+                    documentPage.canvas.scale(invDensity, invDensity)
+
                     drawingViews.getOrNull(i)?.getHighlights()?.forEach { h ->
                         documentPage.canvas.drawRect(h.rect, Paint().apply { color = h.color; style = Paint.Style.FILL })
                     }
@@ -670,6 +682,8 @@ class PDFViewerActivity : AppCompatActivity() {
                             isAntiAlias = true
                         })
                     }
+
+                    documentPage.canvas.restore()
 
                     document.finishPage(documentPage)
                 }
