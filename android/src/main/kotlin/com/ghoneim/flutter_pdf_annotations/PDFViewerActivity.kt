@@ -46,12 +46,13 @@ class PDFViewerActivity : AppCompatActivity() {
 
     private val availableImages = mutableListOf<Bitmap>()
 
-    private enum class AnnotationMode { NONE, DRAW, ERASE, HIGHLIGHT, IMAGE }
+    private enum class AnnotationMode { NONE, DRAW, ERASE, HIGHLIGHT, IMAGE, TEXT }
     private var annotationMode = AnnotationMode.NONE
 
     private lateinit var drawBtn: LinearLayout
     private lateinit var highlightBtn: LinearLayout
     private lateinit var eraserBtn: LinearLayout
+    private var textBtn: LinearLayout? = null
     private lateinit var colorSwatch: View
     private lateinit var sizeSmallBtn: TextView
     private lateinit var sizeMediumBtn: TextView
@@ -360,6 +361,10 @@ class PDFViewerActivity : AppCompatActivity() {
             toolRow.addView(btn, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
 
+        val tBtn = makeToolButton(FPAStrings.text, android.R.drawable.ic_menu_add) { toggleMode(AnnotationMode.TEXT) }
+        textBtn = tBtn
+        toolRow.addView(tBtn, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
         // Vertical divider between tools and actions
         val divider = View(this)
         divider.setBackgroundColor(Color.parseColor("#E0E0E0"))
@@ -463,11 +468,13 @@ class PDFViewerActivity : AppCompatActivity() {
         val isDrawing = annotationMode == AnnotationMode.DRAW
         val isErasing = annotationMode == AnnotationMode.ERASE
         val isHighlighting = annotationMode == AnnotationMode.HIGHLIGHT
+        val isText = annotationMode == AnnotationMode.TEXT
 
         drawingViews.forEach { dv ->
-            dv.isEnabled = isDrawing || isErasing || isHighlighting
+            dv.isEnabled = isDrawing || isErasing || isHighlighting || isText
             dv.setEraserMode(isErasing)
             dv.setHighlightMode(isHighlighting)
+            dv.isTextMode = isText
             if (isHighlighting) dv.setHighlightColor(currentHighlightColor)
         }
         currentEraserMode = isErasing
@@ -476,6 +483,7 @@ class PDFViewerActivity : AppCompatActivity() {
         updateToolButtonState(highlightBtn, isHighlighting, Color.parseColor("#FFC107"))
         updateToolButtonState(eraserBtn, isErasing, Color.parseColor("#FF5722"))
         imageBtn?.let { updateToolButtonState(it, false, Color.parseColor("#4CAF50")) }
+        textBtn?.let { updateToolButtonState(it, isText, Color.parseColor("#9C27B0")) }
         updateColorSwatch()
 
         // Show/hide options panel for draw and highlight modes
@@ -625,7 +633,34 @@ class PDFViewerActivity : AppCompatActivity() {
             imageView.post {
                 drawingView.setTransformMatrix(imageView.imageMatrix)
             }
+
+            drawingView.onTextPlacementRequest = { x, y -> showTextInputDialog(drawingView, pageIndex, x, y) }
         }
+    }
+
+    private fun showTextInputDialog(drawingView: DrawingView, pageIndex: Int, x: Float, y: Float) {
+        val input = android.widget.EditText(this).apply {
+            hint = "Enter text"
+            setPadding(dpToPx(16), dpToPx(12), dpToPx(16), dpToPx(12))
+            setSingleLine(false)
+            isFocusableInTouchMode = true
+        }
+        AlertDialog.Builder(this)
+            .setTitle(FPAStrings.addText)
+            .setView(input)
+            .setPositiveButton(FPAStrings.save) { _, _ ->
+                val text = input.text.toString()
+                if (text.isNotBlank()) {
+                    drawingView.textColor = currentColor
+                    drawingView.addTextAnnotation(text, x, y)
+                    undoStack.add(pageIndex)
+                }
+            }
+            .setNegativeButton(FPAStrings.cancel, null)
+            .show()
+        input.requestFocus()
+        val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+        imm.showSoftInput(input, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
     }
 
     private fun showColorPicker() {
@@ -680,6 +715,13 @@ class PDFViewerActivity : AppCompatActivity() {
                             style = Paint.Style.STROKE
                             strokeJoin = Paint.Join.ROUND; strokeCap = Paint.Cap.ROUND
                             isAntiAlias = true
+                        })
+                    }
+
+                    drawingViews.getOrNull(i)?.getTextAnnotations()?.forEach { t ->
+                        documentPage.canvas.drawText(t.text, t.x, t.y, Paint().apply {
+                            color = t.color; textSize = t.fontSize
+                            isAntiAlias = true; style = Paint.Style.FILL
                         })
                     }
 

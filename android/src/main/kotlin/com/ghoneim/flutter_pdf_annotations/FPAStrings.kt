@@ -29,10 +29,12 @@ object FPAStrings {
     val undo:    String get() = str("Undo",    "تراجع",   "Deshacer",  "Desfazer")
 
     // MARK: - Tool names
-    val draw:  String get() = str("Draw",  "رسم",    "Dibujar",  "Desenhar")
-    val erase: String get() = str("Erase", "ممحاة",  "Borrador", "Borracha")
-    val mark:  String get() = str("Mark",  "تمييز",  "Marcar",   "Marcar")
-    val image: String get() = str("Image", "صورة",   "Imagen",   "Imagem")
+    val draw:    String get() = str("Draw",    "رسم",    "Dibujar",  "Desenhar")
+    val erase:   String get() = str("Erase",   "ممحاة",  "Borrador", "Borracha")
+    val mark:    String get() = str("Mark",    "تمييز",  "Marcar",   "Marcar")
+    val image:   String get() = str("Image",   "صورة",   "Imagen",   "Imagem")
+    val text:    String get() = str("Text",    "نص",     "Texto",    "Texto")
+    val addText: String get() = str("Add Text","إضافة نص","Agregar texto","Adicionar texto")
 
     // MARK: - Aspect ratio
     val aspectLocked: String get() = str("Aspect: Locked",    "النسبة: مقفلة",     "Relación: Bloqueada", "Proporção: Travada")

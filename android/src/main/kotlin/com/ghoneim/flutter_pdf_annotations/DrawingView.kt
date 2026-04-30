@@ -42,6 +42,14 @@ class DrawingView(context: Context) : View(context) {
     private var dragStart = PointF()
     private var dragOrigRect: RectF? = null
 
+    // Text annotation state
+    private val textAnnotations = CopyOnWriteArrayList<TextAnnotationData>()
+    var isTextMode = false
+    var textColor = Color.RED
+    var textFontSize = 40f
+    /** Fired when user taps in text mode — host activity shows input dialog then calls addTextAnnotation(). */
+    var onTextPlacementRequest: ((x: Float, y: Float) -> Unit)? = null
+
     var pendingImageBitmap: Bitmap? = null
     var isImagePlacementMode = false
     var pageBitmapWidth = 0f
@@ -96,8 +104,9 @@ class DrawingView(context: Context) : View(context) {
     data class AnnotationData(val path: Path, val strokeWidth: Float, val color: Int)
     data class HighlightAnnotationData(val rect: RectF, val color: Int)
     data class ImageAnnotationData(val bitmap: Bitmap, var rect: RectF)
+    data class TextAnnotationData(val text: String, val x: Float, val y: Float, val color: Int, val fontSize: Float)
 
-    enum class AnnotationType { PATH, HIGHLIGHT, IMAGE }
+    enum class AnnotationType { PATH, HIGHLIGHT, IMAGE, TEXT }
     private enum class DragMode { NONE, MOVE, TL, TR, BL, BR }
 
     companion object {
@@ -139,6 +148,15 @@ class DrawingView(context: Context) : View(context) {
     fun getAnnotations(): List<AnnotationData> = paths.toList()
     fun getHighlights(): List<HighlightAnnotationData> = highlights.toList()
     fun getImageAnnotations(): List<ImageAnnotationData> = imageAnnotations.toList()
+    fun getTextAnnotations(): List<TextAnnotationData> = textAnnotations.toList()
+
+    fun addTextAnnotation(text: String, x: Float, y: Float) {
+        if (text.isBlank()) return
+        textAnnotations.add(TextAnnotationData(text, x, y, textColor, textFontSize))
+        annotationHistory.add(AnnotationType.TEXT)
+        onStrokeAdded?.invoke()
+        invalidate()
+    }
     fun hasSelectedImage(): Boolean = selectedImageIndex >= 0
 
     fun placeImage(bitmap: Bitmap, cx: Float, cy: Float) {
@@ -291,6 +309,14 @@ class DrawingView(context: Context) : View(context) {
             }
         }
 
+        // Text annotations
+        val textPaint = Paint().apply { isAntiAlias = true; style = Paint.Style.FILL }
+        textAnnotations.forEach { t ->
+            textPaint.color = t.color
+            textPaint.textSize = t.fontSize
+            canvas.drawText(t.text, t.x, t.y, textPaint)
+        }
+
         // Paths
         paths.forEach { a -> paint.color = a.color; paint.strokeWidth = a.strokeWidth; canvas.drawPath(a.path, paint) }
         currentPath?.let { canvas.drawPath(it, paint) }
@@ -338,6 +364,11 @@ class DrawingView(context: Context) : View(context) {
         }
 
         if (handleImageTouch(event, x, y)) return true
+
+        if (isTextMode) {
+            if (event.action == MotionEvent.ACTION_UP) onTextPlacementRequest?.invoke(x, y)
+            return true
+        }
 
         if (isHighlightMode) {
             when (event.action) {
@@ -497,6 +528,7 @@ class DrawingView(context: Context) : View(context) {
         when (annotationHistory.removeAt(annotationHistory.size - 1)) {
             AnnotationType.PATH -> if (paths.isNotEmpty()) paths.removeAt(paths.size - 1)
             AnnotationType.HIGHLIGHT -> if (highlights.isNotEmpty()) highlights.removeAt(highlights.size - 1)
+            AnnotationType.TEXT -> if (textAnnotations.isNotEmpty()) textAnnotations.removeAt(textAnnotations.size - 1)
             AnnotationType.IMAGE -> {
                 if (imageAnnotations.isNotEmpty()) imageAnnotations.removeAt(imageAnnotations.size - 1)
                 if (selectedImageIndex >= imageAnnotations.size) {
@@ -508,7 +540,8 @@ class DrawingView(context: Context) : View(context) {
     }
 
     fun clearAnnotations() {
-        paths.clear(); highlights.clear(); imageAnnotations.clear(); annotationHistory.clear()
+        paths.clear(); highlights.clear(); imageAnnotations.clear()
+        textAnnotations.clear(); annotationHistory.clear()
         currentPath = null; currentHighlightRect = null
         selectedImageIndex = -1; dragMode = DragMode.NONE
         onImageSelectionChanged?.invoke(false)
