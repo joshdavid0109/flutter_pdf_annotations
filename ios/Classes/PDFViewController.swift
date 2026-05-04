@@ -189,6 +189,9 @@ class PDFViewController: UIViewController, UIColorPickerViewControllerDelegate {
     private var isDrawingEnabled = false
     private var isEraserMode = false
     private var isHighlightMode = false
+    private var isTextMode = false
+    private var textButton: UIButton!
+    private var tapGesture: UITapGestureRecognizer!
     private var highlightColor: UIColor = UIColor.yellow.withAlphaComponent(0.5)
     private var highlightStartPoint: CGPoint?
     private var highlightPreviewView: UIView!
@@ -240,6 +243,7 @@ class PDFViewController: UIViewController, UIColorPickerViewControllerDelegate {
         setupPDFView()
         setupToolbar()
         setupPanGesture()
+        setupTapGesture()
         NotificationCenter.default.addObserver(
             self, selector: #selector(handlePDFPageChanged),
             name: .PDFViewPageChanged, object: pdfView
@@ -396,6 +400,7 @@ class PDFViewController: UIViewController, UIColorPickerViewControllerDelegate {
         let highlightSymbol = (UIImage(systemName: "highlighter") != nil) ? "highlighter" : "rectangle.and.pencil.and.ellipsis"
         highlightButton = makeSymbolButton(symbol: highlightSymbol, action: #selector(toggleHighlight))
         eraserButton = makeSymbolButton(symbol: "eraser", action: #selector(toggleEraser))
+        textButton = makeSymbolButton(symbol: "textformat", action: #selector(toggleTextMode))
 
         let undoButton = makeSymbolButton(symbol: "arrow.uturn.backward", action: #selector(undoAnnotation))
         let trashButton = makeSymbolButton(symbol: "trash", action: #selector(clearAllAnnotations))
@@ -409,6 +414,7 @@ class PDFViewController: UIViewController, UIColorPickerViewControllerDelegate {
             wrapButton(drawingButton),
             wrapButton(highlightButton),
             wrapButton(eraserButton),
+            wrapButton(textButton),
         ]
         if let imgBtn = imageButton { items.append(wrapButton(imgBtn)) }
 
@@ -619,14 +625,22 @@ class PDFViewController: UIViewController, UIColorPickerViewControllerDelegate {
         pdfView.addGestureRecognizer(panGesture)
     }
 
-
-
+    private func setupTapGesture() {
+        tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTapGesture(_:)))
+        tapGesture.isEnabled = false
+        pdfView.addGestureRecognizer(tapGesture)
+    }
 
     // MARK: - Mode toggles
 
     @objc private func toggleDrawing() {
-        if isEraserMode   { isEraserMode = false;   eraserButton.tintColor = .secondaryLabel }
+        if isEraserMode    { isEraserMode = false;    eraserButton.tintColor = .secondaryLabel }
         if isHighlightMode { isHighlightMode = false; highlightButton.tintColor = .secondaryLabel }
+        if isTextMode {
+            isTextMode = false
+            pdfView.gestureRecognizers = originalGestureRecognizers; scrollView?.isScrollEnabled = true
+            tapGesture.isEnabled = false; textButton.tintColor = .secondaryLabel
+        }
 
         isDrawingEnabled.toggle()
         if isDrawingEnabled {
@@ -655,6 +669,11 @@ class PDFViewController: UIViewController, UIColorPickerViewControllerDelegate {
             drawingButton.tintColor = .secondaryLabel
         }
         if isHighlightMode { isHighlightMode = false; highlightButton.tintColor = .secondaryLabel }
+        if isTextMode {
+            isTextMode = false
+            pdfView.gestureRecognizers = originalGestureRecognizers; scrollView?.isScrollEnabled = true
+            tapGesture.isEnabled = false; textButton.tintColor = .secondaryLabel
+        }
 
         isEraserMode.toggle()
         if isEraserMode {
@@ -678,6 +697,11 @@ class PDFViewController: UIViewController, UIColorPickerViewControllerDelegate {
             drawingButton.tintColor = .secondaryLabel
         }
         if isEraserMode { isEraserMode = false; eraserButton.tintColor = .secondaryLabel }
+        if isTextMode {
+            isTextMode = false
+            pdfView.gestureRecognizers = originalGestureRecognizers; scrollView?.isScrollEnabled = true
+            tapGesture.isEnabled = false; textButton.tintColor = .secondaryLabel
+        }
 
         isHighlightMode.toggle()
         if isHighlightMode {
@@ -693,6 +717,85 @@ class PDFViewController: UIViewController, UIColorPickerViewControllerDelegate {
             hideOptionsPanel()
         }
         updateColorSwatch()
+    }
+
+    @objc private func toggleTextMode() {
+        if isDrawingEnabled {
+            isDrawingEnabled = false
+            pdfView.gestureRecognizers = originalGestureRecognizers; scrollView?.isScrollEnabled = true
+            drawingButton.setImage(UIImage(systemName: "pencil.slash"), for: .normal)
+            drawingButton.tintColor = .secondaryLabel
+        }
+        if isEraserMode {
+            isEraserMode = false
+            pdfView.gestureRecognizers = originalGestureRecognizers; scrollView?.isScrollEnabled = true
+            eraserButton.tintColor = .secondaryLabel
+        }
+        if isHighlightMode {
+            isHighlightMode = false
+            pdfView.gestureRecognizers = originalGestureRecognizers; scrollView?.isScrollEnabled = true
+            highlightButton.tintColor = .secondaryLabel
+        }
+        hideOptionsPanel()
+
+        isTextMode.toggle()
+        if isTextMode {
+            originalGestureRecognizers = pdfView.gestureRecognizers
+            pdfView.gestureRecognizers?.forEach { $0.isEnabled = false }
+            scrollView = findScrollView(in: pdfView); scrollView?.isScrollEnabled = false
+            tapGesture.isEnabled = true
+            textButton.tintColor = .systemGreen
+        } else {
+            pdfView.gestureRecognizers = originalGestureRecognizers; scrollView?.isScrollEnabled = true
+            tapGesture.isEnabled = false
+            textButton.tintColor = .secondaryLabel
+        }
+    }
+
+    @objc private func handleTapGesture(_ gesture: UITapGestureRecognizer) {
+        guard isTextMode else { return }
+        let location = gesture.location(in: pdfView)
+        guard let page = pdfView.page(for: location, nearest: true) else { return }
+        let pageLocation = pdfView.convert(location, to: page)
+        showTextInputDialog(at: pageLocation, on: page)
+    }
+
+    private func showTextInputDialog(at point: CGPoint, on page: PDFPage) {
+        let s = FPAStrings.current
+        let alert = UIAlertController(title: s.addText, message: nil, preferredStyle: .alert)
+        alert.addTextField { tf in
+            tf.placeholder = s.text
+            tf.autocapitalizationType = .sentences
+        }
+        alert.addAction(UIAlertAction(title: s.cancel, style: .cancel))
+        alert.addAction(UIAlertAction(title: s.confirm, style: .default) { [weak self, weak alert] _ in
+            guard let self,
+                  let inputText = alert?.textFields?.first?.text,
+                  !inputText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+            self.placeText(inputText, at: point, on: page)
+        })
+        present(alert, animated: true)
+    }
+
+    private func placeText(_ text: String, at point: CGPoint, on page: PDFPage) {
+        let fontSize: CGFloat = 14
+        let estimatedWidth = CGFloat(text.count) * fontSize * 0.65 + 20
+        let textWidth = max(estimatedWidth, 80)
+        let textHeight = fontSize * 1.8
+        let bounds = CGRect(
+            x: point.x - textWidth / 2,
+            y: point.y - textHeight / 2,
+            width: textWidth,
+            height: textHeight
+        )
+        let ann = PDFAnnotation(bounds: bounds, forType: .freeText, withProperties: nil)
+        ann.font = UIFont.systemFont(ofSize: fontSize)
+        ann.fontColor = penColor
+        ann.color = .clear
+        ann.contents = text
+        page.addAnnotation(ann)
+        annotationStack.append(ann)
+        pdfView.setNeedsDisplay()
     }
 
     @objc private func toggleImageMode() {
@@ -907,17 +1010,23 @@ class PDFViewController: UIViewController, UIColorPickerViewControllerDelegate {
                         context.translateBy(x: 0, y: pageBounds.height)
                         context.scaleBy(x: 1, y: -1)
 
-                        // Temporarily remove ImagePDFAnnotations before page.draw()
+                        // Temporarily remove ImagePDFAnnotations and freeText annotations before page.draw()
+                        // so we control their rendering exactly (image orientation, text coordinates).
                         let imageAnns = page.annotations.compactMap { $0 as? ImagePDFAnnotation }
+                        let textAnns = page.annotations.filter { $0.type == PDFAnnotationSubtype.freeText.rawValue }
                         imageAnns.forEach { page.removeAnnotation($0) }
+                        textAnns.forEach  { page.removeAnnotation($0) }
 
                         page.draw(with: .mediaBox, to: context)
 
-                        // Restore image annotations
+                        // Restore image and text annotations so the live view stays correct.
                         imageAnns.forEach { page.addAnnotation($0) }
+                        textAnns.forEach  { page.addAnnotation($0) }
 
-                        // Draw non-image annotations manually
-                        for annotation in page.annotations where !(annotation is ImagePDFAnnotation) {
+                        // Draw non-image, non-text annotations manually (highlight + ink).
+                        for annotation in page.annotations
+                            where !(annotation is ImagePDFAnnotation)
+                               && annotation.type != PDFAnnotationSubtype.freeText.rawValue {
                             context.saveGState()
                             if annotation.type == PDFAnnotationSubtype.highlight.rawValue {
                                 context.setFillColor(annotation.color.cgColor)
@@ -941,6 +1050,20 @@ class PDFViewController: UIViewController, UIColorPickerViewControllerDelegate {
                             context.translateBy(x: b.minX, y: b.maxY)
                             context.scaleBy(x: 1, y: -1)
                             imgAnn.image.draw(in: CGRect(origin: .zero, size: b.size))
+                            context.restoreGState()
+                        }
+
+                        // Draw text annotations — same local-flip pattern as images so text is right-side-up.
+                        for textAnn in textAnns {
+                            guard let contents = textAnn.contents, !contents.isEmpty else { continue }
+                            let font = textAnn.font ?? UIFont.systemFont(ofSize: 14)
+                            let fontColor = textAnn.fontColor ?? textAnn.color
+                            let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: fontColor]
+                            let b = textAnn.bounds
+                            context.saveGState()
+                            context.translateBy(x: b.minX, y: b.maxY)
+                            context.scaleBy(x: 1, y: -1)
+                            (contents as NSString).draw(in: CGRect(origin: .zero, size: b.size), withAttributes: attrs)
                             context.restoreGState()
                         }
                     }

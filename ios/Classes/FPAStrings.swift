@@ -42,6 +42,8 @@ struct FPAStrings {
     let erase: String
     let mark: String
     let image: String
+    let text: String
+    let addText: String
 
     // MARK: - Aspect ratio
     let aspectLocked: String
@@ -86,6 +88,8 @@ struct FPAStrings {
             erase              = "ممحاة"
             mark               = "تمييز"
             image              = "صورة"
+            text               = "نص"
+            addText            = "إضافة نص"
             aspectLocked       = "النسبة: مقفلة"
             aspectFree         = "النسبة: حرة"
             aspectLockedShort  = "مقفلة"
@@ -114,6 +118,8 @@ struct FPAStrings {
             erase              = "Borrador"
             mark               = "Marcar"
             image              = "Imagen"
+            text               = "Texto"
+            addText            = "Añadir texto"
             aspectLocked       = "Relación: Bloqueada"
             aspectFree         = "Relación: Libre"
             aspectLockedShort  = "Bloqueada"
@@ -142,6 +148,8 @@ struct FPAStrings {
             erase              = "Borracha"
             mark               = "Marcar"
             image              = "Imagem"
+            text               = "Texto"
+            addText            = "Adicionar texto"
             aspectLocked       = "Proporção: Travada"
             aspectFree         = "Proporção: Livre"
             aspectLockedShort  = "Travada"
@@ -170,6 +178,8 @@ struct FPAStrings {
             erase              = "Erase"
             mark               = "Mark"
             image              = "Image"
+            text               = "Text"
+            addText            = "Add Text"
             aspectLocked       = "Aspect: Locked"
             aspectFree         = "Aspect: Free"
             aspectLockedShort  = "Locked"
